@@ -1,10 +1,12 @@
 use crate::{
+    get_config,
     types::{Context, Data, Error},
     utils::helper_functions::format_datetime,
 };
+use chrono::{Duration, Utc};
 use futures::{lock::Mutex, StreamExt};
 use poise::{
-    serenity_prelude::{Color, CreateEmbed, User, UserId},
+    serenity_prelude::{Color, CreateEmbed, Member, RoleId, Timestamp, User, UserId},
     Command,
 };
 use std::{collections::HashMap, iter::Iterator, sync::Arc};
@@ -633,5 +635,205 @@ pub async fn help(
             .await?;
         }
     }
+    Ok(())
+}
+
+/// Votemute an User
+///
+/// When enough regulars vote to mute a user the user gets muted
+/// ``votemute [user]``
+#[poise::command(prefix_command, slash_command, guild_only, category = "General")]
+pub async fn votemute(
+    ctx: Context<'_>,
+    #[rename = "user"]
+    #[description = "User to votemute"]
+    mut target_user_m: Member,
+) -> Result<(), Error> {
+    const TIMEOUT_DURATION: usize = 30;
+    // pub votemute_users: Mutex<HashMap<UserId, (i64, Vec<UserId>)>>,
+    // HashMap<Target, (Timestamp; List of Users that voted)>
+
+    ctx.defer().await?;
+
+    let target_user = target_user_m.user.id;
+    let calling_user_m = ctx.author_member().await.unwrap();
+    let calling_user = calling_user_m.user.id;
+    let config = get_config!(ctx.data(), {
+        return Err(Error::from("Unable to obtain config"));
+    });
+    let required_users = config.votemute_required_users as usize;
+
+    // Regular check
+    if !calling_user_m
+        .user
+        .has_role(
+            ctx.discord(),
+            ctx.guild_id().unwrap(),
+            RoleId(config.regular_role as u64),
+        )
+        .await?
+    {
+        ctx.send(|b| {
+            b.embed(|e| {
+                e.title("You are not a Regular member")
+                    .description("You need the Regular role to votemute")
+                    .color(Color::RED)
+            })
+        })
+        .await?;
+        return Ok(());
+    }
+
+    // Is the caller the target
+    if calling_user == target_user {
+        ctx.send(|m| {
+            m.embed(|e| {
+                e.title("That's a bad idea")
+                    .description("You should not try to votemute yourself")
+                    .color(Color::RED)
+            })
+            .ephemeral(true)
+        })
+        .await?;
+        return Ok(());
+    }
+
+    // Is the target a moderator
+    if target_user_m
+        .user
+        .has_role(
+            ctx.discord(),
+            ctx.guild_id().unwrap(),
+            RoleId(config.moderator_role as u64),
+        )
+        .await?
+    {
+        ctx.send(|b| {
+            b.embed(|e| {
+                e.title("That's a bad idea")
+                    .description("You should not try to votemute a moderator")
+                    .color(Color::RED)
+            })
+        })
+        .await?;
+        return Ok(());
+    }
+
+    // Is the target a bot
+    if target_user_m.user.bot {
+        ctx.send(|b| {
+            b.embed(|e| {
+                e.title("That's a bad idea")
+                    .description("You should not try to votemute a bot")
+                    .color(Color::RED)
+            })
+        })
+        .await?;
+        return Ok(());
+    }
+
+    // Is the target already muted
+    if target_user_m.communication_disabled_until.is_some() {
+        if target_user_m
+            .communication_disabled_until
+            .unwrap()
+            .unix_timestamp()
+            > Timestamp::now().unix_timestamp()
+        {
+            ctx.send(|b| {
+                b.embed(|e| {
+                    e.title(format!(
+                        "User {} is already muted",
+                        target_user_m.user.tag()
+                    ))
+                    .description("There is no need for a votemute")
+                    .color(Color::RED)
+                })
+            })
+            .await?;
+            return Ok(());
+        }
+    }
+
+    // Actual logic
+    let mut users = ctx.data().votemute_users.lock().await;
+    if users.contains_key(&target_user) {
+        // Reset count, if the first votemute is over 5 minutes ago
+        if users.get(&target_user).unwrap().0 < Utc::now().timestamp() {
+            users.get_mut(&target_user).unwrap().1.clear();
+            users.get_mut(&target_user).unwrap().0 =
+                Utc::now().timestamp() + Duration::minutes(5).num_seconds();
+        }
+        // Add calling user to voted users of the target
+        let vec = &mut users.get_mut(&target_user).unwrap().1;
+        if !vec.contains(&calling_user) {
+            vec.push(calling_user);
+        } else {
+            ctx.send(|b| {
+                b.embed(|e| {
+                    e.title(format!(
+                        "You already voted to mute {}",
+                        target_user_m.user.tag()
+                    ))
+                    .description("You can't for the same user twice")
+                    .color(Color::RED)
+                })
+            })
+            .await?;
+            return Ok(());
+        }
+
+        // Are there enough votes?
+        if vec.len() == required_users {
+            users.remove(&target_user);
+            target_user_m
+                .disable_communication_until_datetime(
+                    ctx.discord(),
+                    Timestamp::from(Utc::now() + Duration::minutes(TIMEOUT_DURATION.try_into()?)),
+                )
+                .await?;
+            ctx.send(|b| {
+                b.embed(|e| {
+                    e.title(format!(
+                        "User {} muted for {} minutes",
+                        target_user_m.user.tag(),
+                        TIMEOUT_DURATION
+                    ))
+                    .description("This should calm down the chat")
+                    .color(Color::FOOYOO)
+                })
+            })
+            .await?;
+            return Ok(());
+        }
+    } else {
+        // Create list of voted people for the target and add the caller
+        users.insert(
+            target_user,
+            (
+                Utc::now().timestamp() + Duration::minutes(5).num_seconds(),
+                vec![calling_user],
+            ),
+        );
+    }
+    ctx.send(|b| {
+        b.embed(|e| {
+            e.title(format!(
+                "{} of {} users voted to mute {} for {} minutes",
+                users.get(&target_user).unwrap().1.len(),
+                required_users,
+                target_user_m.user.tag(),
+                TIMEOUT_DURATION
+            ))
+            .description(format!(
+                "Use ``/votemute {}`` or ``ttc!votemute {}`` to vote too",
+                target_user_m.user.tag(),
+                target_user_m.user.tag()
+            ))
+            .color(Color::BLITZ_BLUE)
+        })
+    })
+    .await?;
+
     Ok(())
 }

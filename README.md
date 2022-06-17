@@ -36,7 +36,9 @@ The bot requires a postgresql database with a table based on the schema in `sql/
   welcome_messages: <Array of welcome messages, "%user%" is substituted for the joined members mention, ["*%user% joined*", ...]>
   owners: <Array of owner user ids, [<user_id>, <user_id>...]>
   verified_role: <Role id for the verified role>
+  regular_role: <Role id for the verified role>
   moderator_role: <Role id for the moderator role>
+  votemute_required_users: <Number of users with regular role required to mute an user by voting>
 ```
 
 You need to set the `DATABASE_URL` variable in `.env` to the same value as `sqlx_config` in the config file to allow for compile time checking of database calls.

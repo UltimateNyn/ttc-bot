@@ -33,7 +33,7 @@ mod types;
 
 use clap::{App, Arg};
 use futures::stream::StreamExt;
-use poise::serenity_prelude::{Activity, ChannelId, Color, GatewayIntents, RwLock};
+use poise::serenity_prelude::{Activity, ChannelId, Color, GatewayIntents, Mutex, RwLock};
 use regex::Regex;
 use serde_yaml::Value;
 use signal_hook::consts::TERM_SIGNALS;
@@ -210,7 +210,9 @@ async fn main() {
     let sqlx_config = config["sqlx_config"].as_str().unwrap();
     let support_channel_id = config["support_channel"].as_u64().unwrap();
     let verified_role_id = config["verified_role"].as_u64().unwrap();
+    let regular_role_id = config["regular_role"].as_u64().unwrap();
     let moderator_role_id = config["moderator_role"].as_u64().unwrap();
+    let votemute_required_users = config["votemute_required_users"].as_i64().unwrap();
     let conveyance_channel_ids = config["conveyance_channels"]
         .as_sequence()
         .unwrap()
@@ -280,11 +282,13 @@ async fn main() {
         let config = Config {
             support_channel: support_channel_id as i64,
             verified_role: verified_role_id as i64,
+            regular_role: regular_role_id as i64,
             moderator_role: moderator_role_id as i64,
             conveyance_channels: conveyance_channel_ids,
             conveyance_blacklisted_channels: conveyance_blacklisted_channel_ids,
             welcome_channel: welcome_channel_id as i64,
             welcome_messages,
+            votemute_required_users: votemute_required_users,
         };
 
         match config.save_in_db(&pool).await {
@@ -332,6 +336,7 @@ async fn main() {
                     webhooks: RwLock::new(webhooks),
                     pool: pool,
                     thread_name_regex: Regex::new("[^a-zA-Z0-9 ]").unwrap(),
+                    votemute_users: Mutex::new(HashMap::new()),
                 })
             })
         })
@@ -350,6 +355,7 @@ async fn main() {
                 commands::general::serverinfo(),
                 commands::general::harold(),
                 commands::general::help(),
+                commands::general::votemute(),
                 // Localisation commands
                 commands::localisation::translate(),
                 // Moderation commands

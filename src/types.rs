@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use poise::serenity_prelude::{ChannelId, Message, RwLock, UserId, Webhook};
+use poise::serenity_prelude::{ChannelId, Message, Mutex, RwLock, UserId, Webhook};
 use sqlx::PgPool;
 
 use crate::utils::bee_utils::{BeeifiedUser, BeezoneChannel};
@@ -13,6 +13,7 @@ pub struct Data {
     pub webhooks: RwLock<HashMap<ChannelId, Webhook>>,
     pub pool: PgPool,
     pub thread_name_regex: regex::Regex,
+    pub votemute_users: Mutex<HashMap<UserId, (i64, Vec<UserId>)>>,
 }
 pub type Error = Box<dyn std::error::Error + Send + Sync>;
 pub type Context<'a> = poise::Context<'a, Data, Error>;
@@ -26,6 +27,8 @@ pub struct Config {
     pub verified_role: i64,
     pub moderator_role: i64,
     pub welcome_messages: Vec<String>,
+    pub regular_role: i64,
+    pub votemute_required_users: i64,
 }
 
 impl Config {
@@ -35,7 +38,7 @@ impl Config {
             .await?;
 
         sqlx::query!(
-            r#"INSERT INTO ttc_config VALUES($1, $2, $3, $4, $5, $6, $7)"#,
+            r#"INSERT INTO ttc_config VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9)"#,
             self.support_channel,
             &self.conveyance_channels,
             &self.conveyance_blacklisted_channels,
@@ -43,6 +46,8 @@ impl Config {
             self.verified_role,
             self.moderator_role,
             &self.welcome_messages,
+            self.regular_role,
+            self.votemute_required_users,
         )
         .execute(pool)
         .await?;

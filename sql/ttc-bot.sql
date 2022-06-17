@@ -48,7 +48,9 @@ CREATE TABLE ttc_config(
 	welcome_channel BIGINT NOT NULL	,
 	verified_role BIGINT NOT NULL,
 	moderator_role BIGINT NOT NULL,
-	welcome_messages VARCHAR(100)[] NOT NULL
+	welcome_messages VARCHAR(100)[] NOT NULL,
+	regular_role BIGINT NOT NULL,
+	votemute_required_users BIGINT NOT NULL
 );
 
 DROP TABLE IF EXISTS ttc_bad_words;
