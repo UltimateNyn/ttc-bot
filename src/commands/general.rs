@@ -642,7 +642,13 @@ pub async fn help(
 ///
 /// When enough regulars vote to mute a user the user gets muted
 /// ``votemute [user]``
-#[poise::command(prefix_command, slash_command, guild_only, category = "General")]
+#[poise::command(
+    prefix_command,
+    slash_command,
+    guild_only,
+    user_cooldown = 30,
+    category = "General"
+)]
 pub async fn votemute(
     ctx: Context<'_>,
     #[rename = "user"]
@@ -652,8 +658,6 @@ pub async fn votemute(
     const TIMEOUT_DURATION: usize = 30;
     // pub votemute_users: Mutex<HashMap<UserId, (i64, Vec<UserId>)>>,
     // HashMap<Target, (Timestamp; List of Users that voted)>
-
-    ctx.defer().await?;
 
     let target_user = target_user_m.user.id;
     let calling_user_m = ctx.author_member().await.unwrap();
@@ -679,6 +683,7 @@ pub async fn votemute(
                     .description("You need the Regular role to votemute")
                     .color(Color::RED)
             })
+            .ephemeral(true)
         })
         .await?;
         return Ok(());
@@ -714,6 +719,7 @@ pub async fn votemute(
                     .description("You should not try to votemute a moderator")
                     .color(Color::RED)
             })
+            .ephemeral(true)
         })
         .await?;
         return Ok(());
@@ -727,6 +733,7 @@ pub async fn votemute(
                     .description("You should not try to votemute a bot")
                     .color(Color::RED)
             })
+            .ephemeral(true)
         })
         .await?;
         return Ok(());
@@ -749,6 +756,7 @@ pub async fn votemute(
                     .description("There is no need for a votemute")
                     .color(Color::RED)
                 })
+                .ephemeral(true)
             })
             .await?;
             return Ok(());
@@ -778,6 +786,7 @@ pub async fn votemute(
                     .description("You can't for the same user twice")
                     .color(Color::RED)
                 })
+                .ephemeral(true)
             })
             .await?;
             return Ok(());
