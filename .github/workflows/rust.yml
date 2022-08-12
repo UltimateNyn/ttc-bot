@@ -37,6 +37,16 @@ jobs:
 
     steps:
     - uses: actions/checkout@v2
+    - name: Build ImageMagick
+      run: |
+        wget https://imagemagick.org/archive/ImageMagick.tar.gz
+        tar -xf ImageMagick.tar.gz
+        pushd ImageMagick-*
+        ./configure
+        make
+        sudo make install
+        sudo ldconfig /usr/local/lib
+        popd
     - name: Install PostgreSQL client
       run: | 
         sudo apt-get update
